@@ -690,7 +690,10 @@ func TestAllServerStepdown2AB(t *testing.T) {
 		}
 
 		for j, msgType := range tmsgTypes {
+			fmt.Println("???")
+
 			sm.Step(pb.Message{From: 2, MsgType: msgType, Term: tterm, LogTerm: tterm})
+			fmt.Println("end")
 
 			if sm.State != tt.wstate {
 				t.Errorf("#%d.%d state = %v , want %v", i, j, sm.State, tt.wstate)
@@ -1252,7 +1255,7 @@ func TestLeaderTransferToUpToDateNodeFromFollower3A(t *testing.T) {
 	nt.send(pb.Message{From: 2, To: 2, MsgType: pb.MessageType_MsgTransferLeader})
 
 	checkLeaderTransferState(t, lead, StateFollower, 2)
-
+	fmt.Println("1111")
 	// After some log replication, transfer leadership back to 1.
 	nt.send(pb.Message{From: 1, To: 1, MsgType: pb.MessageType_MsgPropose, Entries: []*pb.Entry{{}}})
 

@@ -110,11 +110,14 @@ func (rs *RaftStorage) Write(ctx *kvrpcpb.Context, batch []storage.Modify) error
 		Requests: reqs,
 	}
 	cb := message.NewCallback()
+
 	if err := rs.raftRouter.SendRaftCommand(request, cb); err != nil {
+
 		return err
 	}
+	ret := rs.checkResponse(cb.WaitResp(), len(reqs))
 
-	return rs.checkResponse(cb.WaitResp(), len(reqs))
+	return ret
 }
 
 func (rs *RaftStorage) Reader(ctx *kvrpcpb.Context) (storage.StorageReader, error) {

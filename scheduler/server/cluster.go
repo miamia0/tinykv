@@ -275,12 +275,69 @@ func (c *RaftCluster) handleStoreHeartbeat(stats *schedulerpb.StoreStats) error 
 	c.core.PutStore(newStore)
 	return nil
 }
+func (c *RaftCluster) updateDatas(region *core.RegionInfo) {
+	c.core.PutRegion(region)
+	for storeID := range region.GetStoreIds() {
+		c.updateStoreStatusLocked(storeID)
+	}
+
+}
 
 // processRegionHeartbeat updates the region information.
 func (c *RaftCluster) processRegionHeartbeat(region *core.RegionInfo) error {
 	// Your Code Here (3C).
+	c.Lock()
+	defer c.Unlock()
+	var err error
+	err = nil
+	fmt.Println("==========")
 
-	return nil
+	preRegion := c.GetRegion(region.GetID())
+	if preRegion == nil {
+		preRegions := c.core.Regions.GetOverlaps(region)
+		fmt.Println(region.GetMeta().StartKey, region.GetMeta().EndKey)
+		fmt.Println(region.GetStoreIds())
+
+		for _, preRegion := range preRegions {
+			fmt.Println(region.GetRegionEpoch().GetVersion(), preRegion.GetRegionEpoch().GetVersion(), region.GetRegionEpoch().GetConfVer(), preRegion.GetRegionEpoch().GetConfVer())
+
+			if region.GetRegionEpoch().GetVersion() < preRegion.GetRegionEpoch().GetVersion() || region.GetRegionEpoch().GetConfVer() < preRegion.GetRegionEpoch().GetConfVer() {
+				return nil
+			}
+		}
+		c.updateDatas(region)
+		return nil
+	} else {
+
+		if region.GetRegionEpoch().GetVersion() > preRegion.GetRegionEpoch().GetVersion() {
+			c.updateDatas(region)
+
+		} else if region.GetRegionEpoch().GetVersion() == preRegion.GetRegionEpoch().GetVersion() &&
+			region.GetRegionEpoch().GetConfVer() > preRegion.GetRegionEpoch().GetConfVer() {
+			c.updateDatas(region)
+
+		} else if region.GetRegionEpoch().GetVersion() < preRegion.GetRegionEpoch().GetVersion() ||
+			region.GetRegionEpoch().GetConfVer() < preRegion.GetRegionEpoch().GetConfVer() {
+			err = errors.New("stale")
+		} else if region.GetLeader().GetId() != preRegion.GetLeader().GetId() {
+			c.updateDatas(region)
+
+		} else if region.GetApproximateSize() != preRegion.GetApproximateSize() {
+			c.updateDatas(region)
+
+		} else if len(region.GetPendingPeers()) != 0 || len(preRegion.GetPendingPeers()) != 0 {
+			c.updateDatas(region)
+
+		} else if len(region.GetPeers()) != len(preRegion.GetPeers()) {
+			c.updateDatas(region)
+
+		}
+
+		//fmt.Println("ended")
+	}
+
+	return err
+
 }
 
 func (c *RaftCluster) updateStoreStatusLocked(id uint64) {

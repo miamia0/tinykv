@@ -18,7 +18,21 @@ func GetCF(db *badger.DB, cf string, key []byte) (val []byte, err error) {
 	})
 	return
 }
-
+func Getx(db *badger.DB, key []byte) (val []byte, err error) {
+	err = db.View(func(txn *badger.Txn) error {
+		val, err = GetCFFromTxnx(txn, key)
+		return err
+	})
+	return
+}
+func GetCFFromTxnx(txn *badger.Txn, key []byte) (val []byte, err error) {
+	item, err := txn.Get(key)
+	if err != nil {
+		return nil, err
+	}
+	val, err = item.ValueCopy(val)
+	return
+}
 func GetCFFromTxn(txn *badger.Txn, cf string, key []byte) (val []byte, err error) {
 	item, err := txn.Get(KeyWithCF(cf, key))
 	if err != nil {

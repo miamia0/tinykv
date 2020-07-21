@@ -15,6 +15,7 @@ package schedulers
 
 import (
 	"context"
+
 	"github.com/pingcap-incubator/tinykv/proto/pkg/metapb"
 	"github.com/pingcap-incubator/tinykv/scheduler/pkg/mock/mockcluster"
 	"github.com/pingcap-incubator/tinykv/scheduler/pkg/mock/mockoption"

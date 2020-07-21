@@ -144,11 +144,15 @@ func (d *storeWorker) checkMsg(msg *rspb.RaftMessage) (bool, error) {
 		return false, errors.Errorf("tombstone peer [epoch: %s] received an invalid message %s, ignore it",
 			regionEpoch, msgType)
 	}
+
 	return false, nil
 }
 
 func (d *storeWorker) onRaftMessage(msg *rspb.RaftMessage) error {
 	regionID := msg.RegionId
+	log.Debugf("pre raft message. from_peer:%d, to_peer:%d, store:%d, region:%d, msg:%+v",
+		msg.FromPeer.Id, msg.ToPeer.Id, d.storeState.id, regionID, msg.Message)
+
 	if err := d.ctx.router.send(regionID, message.Msg{Type: message.MsgTypeRaftMessage, Data: msg}); err == nil {
 		return nil
 	}

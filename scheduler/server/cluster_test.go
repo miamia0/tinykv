@@ -250,9 +250,11 @@ func (s *testClusterInfoSuite) TestRegionGetStores3C(c *C) {
 }
 
 func (s *testClusterInfoSuite) TestRegionGetStoresInfo3C(c *C) {
+	fmt.Println("=====================")
 	cluster, _ := s.setUpTestCluster(c)
 
 	for _, store := range cluster.core.Stores.GetStores() {
+		fmt.Println(store, cluster.core.Regions.GetStoreRegionCount(store.GetID()))
 		c.Assert(store.GetLeaderCount(), Equals, cluster.core.Regions.GetStoreLeaderCount(store.GetID()))
 		c.Assert(store.GetRegionCount(), Equals, cluster.core.Regions.GetStoreRegionCount(store.GetID()))
 		c.Assert(store.GetLeaderSize(), Equals, cluster.core.Regions.GetStoreLeaderRegionSize(store.GetID()))

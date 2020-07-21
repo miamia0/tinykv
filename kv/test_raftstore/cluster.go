@@ -209,10 +209,13 @@ func (c *Cluster) CallCommandOnLeader(request *raft_cmdpb.RaftCmdRequest, timeou
 	startTime := time.Now()
 	regionID := request.Header.RegionId
 	leader := c.LeaderOfRegion(regionID)
+
 	for {
 		if time.Now().Sub(startTime) > timeout {
 			return nil, nil
 		}
+		//		num := rand.Int31()
+		//		fmt.Println(num, "query", leader, "regionid", regionID)
 		if leader == nil {
 			panic(fmt.Sprintf("can't get leader of region %d", regionID))
 		}
@@ -414,7 +417,7 @@ func (c *Cluster) MustTransferLeader(regionID uint64, leader *metapb.Peer) {
 			return
 		}
 		if time.Now().Sub(timer) > 5*time.Second {
-			panic(fmt.Sprintf("failed to transfer leader to [%d] %s", regionID, leader.String()))
+			panic(fmt.Sprintf("failed to transfer leader to [%d] leader:%d %s", regionID, currentLeader.Id, leader.String()))
 		}
 		c.TransferLeader(regionID, leader)
 	}

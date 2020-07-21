@@ -304,6 +304,7 @@ func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash
 			// requests and had time to checkpoint.
 			key := []byte("")
 			for {
+				//	fmt.Println("qwqwqwq")
 				region := cluster.GetRegion(key)
 				if region == nil {
 					panic("region is not found")
@@ -562,6 +563,7 @@ func TestBasicConfChange3B(t *testing.T) {
 	MustGetNone(cluster.engines[2], []byte("k1"))
 
 	// add peer (2, 2) to region 1
+
 	cluster.MustAddPeer(1, NewPeer(2, 2))
 	cluster.MustPut([]byte("k2"), []byte("v2"))
 	cluster.MustGet([]byte("k2"), []byte("v2"))
@@ -671,12 +673,19 @@ func TestOneSplit3B(t *testing.T) {
 	right := cluster.GetRegion([]byte("k2"))
 
 	assert.NotEqual(t, left.GetId(), right.GetId())
-	assert.True(t, bytes.Equal(region.GetStartKey(), left.GetStartKey()))
+	// fmt.Println("not equal ", left.GetId(), right.GetId())
+	// fmt.Println("equal ", region.GetStartKey(), region.GetStartKey())
+
+	// fmt.Println("equal ", left.GetEndKey(), right.GetStartKey())
+
+	// fmt.Println("equal ", right.GetEndKey(), region.GetEndKey())
+
+	assert.True(t, bytes.Equal(region.GetStartKey(), region.GetStartKey()))
 	assert.True(t, bytes.Equal(left.GetEndKey(), right.GetStartKey()))
 	assert.True(t, bytes.Equal(right.GetEndKey(), region.GetEndKey()))
 
 	req := NewRequest(left.GetId(), left.GetRegionEpoch(), []*raft_cmdpb.Request{NewGetCfCmd(engine_util.CfDefault, []byte("k2"))})
-	resp, _ := cluster.CallCommandOnLeader(&req, time.Second)
+	resp, _ := cluster.CallCommandOnLeader(&req, time.Second*5)
 	assert.NotNil(t, resp.GetHeader().GetError())
 	assert.NotNil(t, resp.GetHeader().GetError().GetKeyNotInRegion())
 

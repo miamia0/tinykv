@@ -71,12 +71,26 @@ type Ready struct {
 type RawNode struct {
 	Raft *Raft
 	// Your Data Here (2A).
+	nwReady Ready
 }
 
 // NewRawNode returns a new RawNode given configuration and a list of raft peers.
 func NewRawNode(config *Config) (*RawNode, error) {
 	// Your Code Here (2A).
-	return nil, nil
+	rn := &RawNode{
+		Raft:    newRaft(config),
+		nwReady: Ready{SoftState: &SoftState{}},
+	}
+	rn.nwReady.SoftState = &SoftState{
+		Lead:      rn.Raft.Lead,
+		RaftState: rn.Raft.State,
+	}
+	rn.nwReady.HardState = pb.HardState{
+		Term:   rn.Raft.Term,
+		Vote:   rn.Raft.Vote,
+		Commit: rn.Raft.RaftLog.GetCommitIndex(),
+	}
+	return rn, nil
 }
 
 // Tick advances the internal logical clock by a single tick.
@@ -140,16 +154,106 @@ func (rn *RawNode) Step(m pb.Message) error {
 	}
 	return ErrStepPeerNotFound
 }
+func isSameHardState(a, b pb.HardState) bool {
+	if a.Term == b.Term && a.Vote == b.Vote && a.Commit == b.Commit {
+		return true
+	}
+	return false
+}
 
 // Ready returns the current point-in-time state of this RawNode.
 func (rn *RawNode) Ready() Ready {
 	// Your Code Here (2A).
-	return Ready{}
+	rn.Raft.mu.Lock()
+	rn.Raft.RaftLog.mu.Lock()
+	defer rn.Raft.mu.Unlock()
+	defer rn.Raft.RaftLog.mu.Unlock()
+	msgs := rn.Raft.msgs
+	rn.Raft.msgs = make([]pb.Message, 0)
+	// snapshot, err := rn.Raft.RaftLog.storage.Snapshot()
+	// if err != nil {
+	// 	snapshot.Data = nil
+	// 	fmt.Println("ready:snapshot:", err.Error())
+	// } else {
+	var snapshot pb.Snapshot
+	if rn.Raft.RaftLog.pendingSnapshot != nil {
+		snapshot = *rn.Raft.RaftLog.pendingSnapshot
+		rn.Raft.RaftLog.pendingSnapshot = nil
+	} else {
+		snapshot = pb.Snapshot{Data: nil}
+	}
+	// }
+	hardState := pb.HardState{
+		Term:   rn.Raft.Term,
+		Vote:   rn.Raft.Vote,
+		Commit: rn.Raft.RaftLog.GetCommitIndexUnlock(),
+	}
+	if isSameHardState(rn.nwReady.HardState, hardState) {
+		hardState = pb.HardState{}
+	} else {
+		rn.nwReady.HardState = hardState
+	}
+
+	softState := SoftState{
+		Lead:      rn.Raft.Lead,
+		RaftState: rn.Raft.State,
+	}
+	softStateData := &softState
+	if softState == *rn.nwReady.SoftState {
+		softStateData = nil
+	} else {
+		rn.nwReady.SoftState = &softState
+	}
+	// fmt.Println("pre::applied:", rn.Raft.RaftLog.applied, "commit", rn.Raft.RaftLog.committed,
+	// 	"stable:", rn.Raft.RaftLog.stabled, "last:", rn.Raft.RaftLog.LastIndexUnLock())
+
+	nwReady := Ready{
+		SoftState: softStateData,
+		HardState: hardState,
+		// HardState: pb.HardState{
+		// 	Term:   rn.Raft.Term,
+		// 	Vote:   rn.Raft.Vote,
+		// 	Commit: rn.Raft.RaftLog.committed,
+		// },
+		Snapshot:         snapshot,
+		Entries:          rn.Raft.RaftLog.unstableEntriesUnLock(),
+		CommittedEntries: rn.Raft.RaftLog.nextEntsUnLock(),
+		Messages:         msgs, // []pb.Message
+	}
+	// fmt.Println("entriesDATA", len(nwReady.Entries), len(nwReady.CommittedEntries))
+	// fmt.Println("applied:", rn.Raft.RaftLog.applied, "commit", rn.Raft.RaftLog.committed,
+	// 	"stable:", rn.Raft.RaftLog.stabled, "last:", rn.Raft.RaftLog.LastIndexUnLock())
+
+	return nwReady
 }
 
 // HasReady called when RawNode user need to check if any Ready pending.
 func (rn *RawNode) HasReady() bool {
 	// Your Code Here (2A).
+	if rn.Raft.Lead != rn.nwReady.Lead {
+		return true
+	}
+	if rn.Raft.State != rn.nwReady.RaftState {
+		return true
+	}
+	if rn.nwReady.Term != rn.Raft.Term {
+		return true
+	}
+	if rn.nwReady.Vote != rn.Raft.Vote {
+		return true
+	}
+	if rn.Raft.RaftLog.pendingSnapshot != nil {
+		return true
+	}
+	if rn.Raft.RaftLog.applied < rn.Raft.RaftLog.committed {
+		return true
+	}
+	if rn.Raft.RaftLog.stabled < rn.Raft.RaftLog.LastIndexUnLock() {
+		return true
+	}
+	if len(rn.Raft.msgs) != 0 {
+		return true
+	}
 	return false
 }
 
@@ -157,6 +261,18 @@ func (rn *RawNode) HasReady() bool {
 // last Ready results.
 func (rn *RawNode) Advance(rd Ready) {
 	// Your Code Here (2A).
+	if len(rd.CommittedEntries) != 0 {
+		//rn.Raft.RaftLog.SetStabledIndex(rd.CommittedEntries[len(rd.CommittedEntries)-1].Index)
+
+		rn.Raft.RaftLog.SetAppliedIndex(rd.CommittedEntries[len(rd.CommittedEntries)-1].Index)
+
+	}
+	//rn.Raft.RaftLog.stabled += uint64(len(ent))
+	if len(rd.Entries) != 0 {
+
+		rn.Raft.RaftLog.SetStabledIndex(rd.Entries[len(rd.Entries)-1].Index)
+	}
+	//fmt.Println(rn.Raft.id, "rn.Raft.RaftLog.applied:", rn.Raft.RaftLog.applied)
 }
 
 // GetProgress return the the Progress of this node and its peers, if this

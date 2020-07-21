@@ -667,6 +667,7 @@ func (r *RegionsInfo) GetLeader(storeID uint64, region *RegionInfo) *RegionInfo 
 
 // GetFollower return follower RegionInfo by storeID and regionID(now only used in test)
 func (r *RegionsInfo) GetFollower(storeID uint64, region *RegionInfo) *RegionInfo {
+	//fmt.Println(r.followers[storeID], "\n", r.followers[storeID].find(region))
 	return r.followers[storeID].find(region).region
 }
 

@@ -105,7 +105,7 @@ func TestLeaderBcastBeat2AA(t *testing.T) {
 		{From: 1, To: 3, Term: 1, MsgType: pb.MessageType_MsgHeartbeat},
 	}
 	if !reflect.DeepEqual(msgs, wmsgs) {
-		t.Errorf("msgs = %v, want %v", msgs, wmsgs)
+		t.Errorf("msgs = %v,\n want %v", msgs, wmsgs)
 	}
 }
 

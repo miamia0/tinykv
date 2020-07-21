@@ -14,6 +14,10 @@
 package schedulers
 
 import (
+	"fmt"
+	"sort"
+
+	"github.com/pingcap-incubator/tinykv/log"
 	"github.com/pingcap-incubator/tinykv/scheduler/server/core"
 	"github.com/pingcap-incubator/tinykv/scheduler/server/schedule"
 	"github.com/pingcap-incubator/tinykv/scheduler/server/schedule/operator"
@@ -75,8 +79,97 @@ func (s *balanceRegionScheduler) IsScheduleAllowed(cluster opt.Cluster) bool {
 	return s.opController.OperatorCount(operator.OpRegion) < cluster.GetRegionScheduleLimit()
 }
 
+type storeSizeData struct {
+	storeID   uint64
+	storeSize int64
+}
+
+type storeSize []storeSizeData
+
+func (s storeSize) Len() int           { return len(s) }
+func (s storeSize) Less(i, j int) bool { return s[i].storeSize > s[j].storeSize }
+func (s storeSize) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
+func getDistinctReplica() {
+
+}
+
+func getRegion(cluster opt.Cluster, storeID uint64) *core.RegionInfo {
+	var region *core.RegionInfo = nil
+	cluster.GetPendingRegionsWithLock(storeID, func(tree core.RegionsContainer) {
+		region = tree.RandomRegion(make([]byte, 0), make([]byte, 0))
+	})
+	if region == nil {
+		cluster.GetFollowersWithLock(storeID, func(tree core.RegionsContainer) {
+			region = tree.RandomRegion(make([]byte, 0), make([]byte, 0))
+		})
+	}
+	if region == nil {
+		cluster.GetLeadersWithLock(storeID, func(tree core.RegionsContainer) {
+			region = tree.RandomRegion(make([]byte, 0), make([]byte, 0))
+		})
+	}
+	if region == nil {
+		return nil
+	}
+	if len(region.GetPeers()) > cluster.GetMaxReplicas() {
+		return nil
+	}
+	return region
+}
+
+//TODO banlance leader
+//TODO banlance replica
+//TODO banlance region in diff node
 func (s *balanceRegionScheduler) Schedule(cluster opt.Cluster) *operator.Operator {
 	// Your Code Here (3C).
 
-	return nil
+	stores := cluster.GetStores()
+	var tmpStoreSize storeSize
+
+	//all of the aval stores
+	for _, store := range stores {
+		if store.IsUp() && store.DownTime() <= cluster.GetMaxStoreDownTime() {
+			tmpStoreSize = append(tmpStoreSize, storeSizeData{store.GetID(), store.GetRegionSize()})
+		}
+
+		fmt.Println(store)
+
+	}
+	fmt.Println(tmpStoreSize)
+	if len(tmpStoreSize) == 0 {
+		return nil
+	}
+	sort.Sort(tmpStoreSize)
+	maxStore := tmpStoreSize[0]
+	log.Debugf("chose store %d", maxStore)
+	var region *core.RegionInfo
+
+	region = getRegion(cluster, maxStore.storeID)
+	if region == nil {
+		return nil
+	}
+
+	if len(region.GetPeers()) < cluster.GetMaxReplicas() {
+		return nil
+	}
+
+	if maxStore.storeSize <= tmpStoreSize[tmpStoreSize.Len()-1].storeSize+region.GetApproximateSize()*2 {
+		return nil
+	}
+	newStoreID := uint64(0)
+	for i := tmpStoreSize.Len() - 1; i >= 1; i-- {
+		storeID := tmpStoreSize[i].storeID
+		if region.GetStorePeer(storeID) == nil {
+			newStoreID = storeID
+			break
+		}
+	}
+
+	if newStoreID == 0 {
+		return nil
+	}
+	newPeer, _ := cluster.AllocPeer(newStoreID)
+	op, _ := operator.CreateMovePeerOperator("", cluster, region, operator.OpBalance, maxStore.storeID, newStoreID, newPeer.Id)
+	return op
 }

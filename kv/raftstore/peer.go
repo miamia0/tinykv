@@ -146,8 +146,11 @@ func NewPeer(storeId uint64, cfg *config.Config, engines *engine_util.Engines, r
 		PeersStartPendingTime: make(map[uint64]time.Time),
 		Tag:                   tag,
 		ticker:                newTicker(region.GetId(), cfg),
+		ApproximateSize:       new(uint64),
 	}
-
+	lsmSize, logSize := ps.Engines.Kv.Size()
+	totalSize := uint64(lsmSize + logSize)
+	p.ApproximateSize = &(totalSize)
 	// If this region has only one peer and I am the one, campaign directly.
 	if len(region.GetPeers()) == 1 && region.GetPeers()[0].GetStoreId() == storeId {
 		err = p.RaftGroup.Campaign()
@@ -343,7 +346,10 @@ func (p *peer) Term() uint64 {
 }
 
 func (p *peer) HeartbeatScheduler(ch chan<- worker.Task) {
-	clonedRegion := new(metapb.Region)
+	clonedRegion := &metapb.Region{
+		RegionEpoch: &metapb.RegionEpoch{},
+	}
+	//fmt.Println(p.Region(), clonedRegion)
 	err := util.CloneMsg(p.Region(), clonedRegion)
 	if err != nil {
 		return
@@ -370,11 +376,10 @@ func (p *peer) sendRaftMessage(msg eraftpb.Message, trans Transport) error {
 	if toPeer == nil {
 		return fmt.Errorf("failed to lookup recipient peer %v in region %v", msg.To, p.regionId)
 	}
-	log.Debugf("%v, send raft msg %v from %v to %v", p.Tag, msg.MsgType, fromPeer, toPeer)
+	//	log.Debugf("%v, send raft msg %v from %v to %v", p.Tag, msg.MsgType, fromPeer, toPeer)
 
 	sendMsg.FromPeer = &fromPeer
 	sendMsg.ToPeer = toPeer
-
 	// There could be two cases:
 	// 1. Target peer already exists but has not established communication with leader yet
 	// 2. Target peer is added newly due to member change or region split, but it's not
